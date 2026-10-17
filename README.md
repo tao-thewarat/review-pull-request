@@ -1,114 +1,142 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# review-pull-request
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+AI code reviewer for GitHub pull requests. A GitHub webhook queues a review job; a worker reads the PR diff at a specific commit, asks an LLM for findings, and posts a GitHub review with inline comments pinned to that commit.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Built with NestJS, BullMQ (Redis), TypeORM (Postgres) and an OpenAI-compatible chat completions API.
 
-## Description
+## Flow
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
-
-```bash
-$ yarn install
+```mermaid
+flowchart TD
+    A["GitHub: PR opened or pushed"] --> B["Verify signature and event"]
+    B --> C["Fetch current head SHA, bump desired_sha and generation"]
+    C --> D["Replace waiting job, enqueue latest"]
+    D --> E["Worker picks up job"]
+    E --> F{"SHA and generation still latest?"}
+    F -->|no| X["Drop job or result"]
+    F -->|yes| G["Read diff at SHA"]
+    G --> H["AI analysis, findings"]
+    H --> I["Validate lines, remove duplicates"]
+    I --> J{"Still latest before posting?"}
+    J -->|no| X
+    J -->|yes| K["Create GitHub review with inline comments"]
+    K --> L["Store review ID and published SHA"]
 ```
 
-## Compile and run the project
+Each PR has at most one wanted review: the latest head commit. Every review states which commit it covers.
+
+| Module | Folder | Role |
+| --- | --- | --- |
+| `GithubModule` | `src/github/` | Webhook controller, signature check, `pull_request` action filter |
+| `ReviewModule` | `src/review/` | Producer (head SHA check, state bump, enqueue), worker, staleness checks, publish, per-PR state in Postgres |
+| `DiffModule` | `src/diff/` | PR diff at a SHA via the compare API, line-number annotation |
+| `TaskModule` | `src/task/` | Task key lookup and task description from the task API |
+| `AiModule` | `src/ai/` | LLM call, parse findings |
+| `OctokitModule` | `src/octokit/` | Shared authenticated GitHub client |
+| `common` | `src/common/` | Basic auth for the queue dashboard |
+
+### Design notes
+
+- **Generation.** `bump()` updates `desired_sha` and increments `generation` in one SQL statement, and only when the SHA changes, so redelivered webhooks do not create new work.
+- **Out-of-order webhooks.** The producer uses the PR's current head from the GitHub API, not the SHA in the payload.
+- **Stale work.** The worker checks SHA and generation before the AI call and again before posting. A running job cannot be cancelled, so the second check discards outdated results.
+- **Pinned reviews.** Reviews are created with `commit_id` set to the analysed SHA, so a push between the check and the post cannot misplace comments.
+- **Retries.** The review body carries a `<!-- ai-review sha=... -->` marker. Before posting, the worker looks for an existing review with that marker and reuses it instead of posting twice.
+- **Task check.** The producer finds a task key such as `IC20-9` in the branch name, PR title, or PR body. The worker fetches the task from `TASK_API_URL/v1/tasks/<key>` and the model checks the diff against its description. If no key is found or the task API fails, the review runs on the diff alone.
+- **Inline comments.** Patch lines are annotated with new-file line numbers for the model; findings outside the diff are dropped, since GitHub rejects them.
+
+## Setup
+
+Requirements: Node.js, Yarn, Docker.
 
 ```bash
-# development
-$ yarn run start
-
-# watch mode
-$ yarn run start:dev
-
-# production mode
-$ yarn run start:prod
+yarn install
+docker compose up -d   # Redis + Postgres
 ```
 
-## Run tests
+Create `.env`:
+
+```dotenv
+REDIS_HOST=localhost
+REDIS_PORT=6379
+DATABASE_URL=postgres://review:review@localhost:5432/review
+
+GITHUB_WEBHOOK_SECRET=<webhook secret>
+GITHUB_TOKEN=<token with pull request read/write>
+
+AI_BASE_URL=https://gateway.9arm.co/v1
+AI_MODEL=qwen3.8-27b-fp8
+AI_API_KEY=<api key>
+
+TASK_API_URL=http://localhost:8069
+TASK_API_KEY=<task api key>
+
+BULL_BOARD_USER=admin
+BULL_BOARD_PASSWORD=<password>
+```
+
+The schema is created automatically on boot (`synchronize: true`).
+
+## Run
 
 ```bash
-# unit tests
-$ yarn run test
-
-# e2e tests
-$ yarn run test:e2e
-
-# test coverage
-$ yarn run test:cov
+yarn start:dev    # watch mode
+yarn build && yarn start:prod
 ```
 
-## Deployment
+## Queue dashboard
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+[Bull Board](https://github.com/felixmosh/bull-board) runs at `http://localhost:3000/queues`. It uses HTTP Basic auth with `BULL_BOARD_USER` and `BULL_BOARD_PASSWORD`. The dashboard can retry and delete jobs, so keep the password secret.
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## GitHub webhook
+
+In the repository settings, add a webhook:
+
+- **Payload URL:** `https://<host>/github/event/pull-request`
+- **Content type:** `application/json`
+- **Secret:** same value as `GITHUB_WEBHOOK_SECRET`
+- **Events:** Pull requests
+
+Handled actions: `opened`, `synchronize`, `reopened`, `ready_for_review`. Other events return `ignored`, and `ping` returns `pong`.
+
+### Test locally
+
+Save a `pull_request` payload as `payload.json`, sign it, and send it. The payload must point at a PR you are willing to have reviewed, because the worker posts real comments.
 
 ```bash
-$ yarn install -g @nestjs/mau
-$ mau deploy
+SIG=$(openssl dgst -sha256 -hmac "$GITHUB_WEBHOOK_SECRET" payload.json | awk '{print $NF}')
+curl localhost:3000/github/event/pull-request \
+  -H 'X-GitHub-Event: pull_request' \
+  -H "X-Hub-Signature-256: sha256=$SIG" \
+  -H 'Content-Type: application/json' \
+  --data-binary @payload.json
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Use `--data-binary` so the body bytes match the signature. In fish, write `set SIG (...)` instead of `SIG=$(...)`.
 
-## Observability
+The same head SHA is reviewed only once. To review it again, clear the stored SHA so the next webhook bumps the generation. Do not delete the row: the generation would restart at 1 and collide with a completed job ID still kept in Redis.
 
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
+```sql
+UPDATE pr_review_state SET desired_sha = '' WHERE repository = 'owner/repo' AND pr_number = 1;
+```
 
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
+## Development
 
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
+```bash
+yarn test         # unit tests (vitest)
+yarn lint         # oxlint
+yarn format       # prettier
+```
 
-## Resources
+Husky hooks:
 
-Check out a few resources that may come in handy when working with NestJS:
+- **pre-commit:** lint-staged runs prettier on staged `.ts` files.
+- **commit-msg:** commitlint (`@commitlint/config-angular`), for example `feat(review): add retry marker`.
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+## Known limits
 
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- Only the diff is sent to the model, not full file contents.
+- Diffs longer than 100,000 characters are truncated.
+- The compare API returns at most 300 files and omits very large patches.
+- `bump()` and the queue add are not atomic. If the add fails, that SHA waits for the next push.
+- `synchronize: true` is for development. Use TypeORM migrations before production.

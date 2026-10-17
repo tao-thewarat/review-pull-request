@@ -1,0 +1,2 @@
+node scripts/fix-commit-msg.ts "$1"
+npx --no-install commitlint --edit "$1"
