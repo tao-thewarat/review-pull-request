@@ -84,6 +84,15 @@ yarn start:dev    # watch mode
 yarn build && yarn start:prod
 ```
 
+### Docker
+
+```bash
+docker build -t review-pull-request .
+docker run -p 3000:3000 --env-file .env review-pull-request
+```
+
+The image is a multi-stage build: compile with dev dependencies, then copy `dist/` and production `node_modules` into a clean `node:26-alpine` image that runs as the `node` user. Point `REDIS_HOST` and `DATABASE_URL` at hosts reachable from the container (not `localhost`).
+
 ## Queue dashboard
 
 [Bull Board](https://github.com/felixmosh/bull-board) runs at `http://localhost:3000/queues`. It uses HTTP Basic auth with `BULL_BOARD_USER` and `BULL_BOARD_PASSWORD`. The dashboard can retry and delete jobs, so keep the password secret.

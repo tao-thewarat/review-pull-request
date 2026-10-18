@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+.git
+.husky
+.env
+.env.*
+payload.json
+*.log
+test
+scripts
+**/*.spec.ts
