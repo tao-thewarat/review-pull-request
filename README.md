@@ -62,7 +62,9 @@ REDIS_PORT=6379
 DATABASE_URL=postgres://review:review@localhost:5432/review
 
 GITHUB_WEBHOOK_SECRET=<webhook secret>
-GITHUB_TOKEN=<token with pull request read/write>
+GITHUB_APP_ID=<app id>
+GITHUB_APP_INSTALLATION_ID=<installation id>
+GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----\n"
 
 AI_BASE_URL=https://gateway.9arm.co/v1
 AI_MODEL=qwen3.8-27b-fp8
@@ -97,14 +99,18 @@ The image is a multi-stage build: compile with dev dependencies, then copy `dist
 
 [Bull Board](https://github.com/felixmosh/bull-board) runs at `http://localhost:3000/queues`. It uses HTTP Basic auth with `BULL_BOARD_USER` and `BULL_BOARD_PASSWORD`. The dashboard can retry and delete jobs, so keep the password secret.
 
-## GitHub webhook
+## GitHub App
 
-In the repository settings, add a webhook:
+The service authenticates as a GitHub App, so reviews are posted as `<app-name>[bot]` and installation tokens refresh automatically.
 
-- **Payload URL:** `https://<host>/github/event/pull-request`
-- **Content type:** `application/json`
-- **Secret:** same value as `GITHUB_WEBHOOK_SECRET`
-- **Events:** Pull requests
+1. Create an app under **Settings → Developer settings → GitHub Apps** (on the organization for org repos).
+2. **Webhook URL:** `https://<host>/github/event/pull-request`. **Webhook secret:** same value as `GITHUB_WEBHOOK_SECRET`.
+3. **Repository permissions:** Pull requests: Read and write; Contents: Read-only; Metadata: Read-only.
+4. **Subscribe to events:** Pull request.
+5. Generate a private key and put it in `GITHUB_APP_PRIVATE_KEY`, with newlines written as `\n`.
+6. Install the app on the organization or repositories. The installation ID is the number at the end of the installation settings URL (`.../settings/installations/<id>`).
+
+One installation is supported at a time.
 
 Handled actions: `opened`, `synchronize`, `reopened`, `ready_for_review`. Other events return `ignored`, and `ping` returns `pong`.
 
