@@ -20,7 +20,7 @@ export class ReviewService {
   ) {}
 
   async run(job: ReviewJob): Promise<void> {
-    const { owner, repo, pullNumber, baseRef, headSha, generation, taskKey } =
+    const { owner, repo, pullNumber, baseRef, headSha, generation, taskKeys } =
       job;
     const repository = `${owner}/${repo}`;
     const label = `${repository}#${pullNumber}@${headSha.slice(0, 7)}`;
@@ -33,8 +33,8 @@ export class ReviewService {
     }
 
     const files = await this.diff.getDiff(owner, repo, baseRef, headSha);
-    const task = taskKey ? await this.tasks.getTask(taskKey) : null;
-    const review = await this.ai.review(files, task);
+    const tasks = await this.tasks.getTasks(taskKeys);
+    const review = await this.ai.review(files, tasks);
     const findings = validateFindings(review.findings, files);
 
     // The AI call is slow; a newer push may have landed meanwhile.
@@ -59,7 +59,7 @@ export class ReviewService {
         pull_number: pullNumber,
         commit_id: headSha,
         event: 'COMMENT',
-        body: `${review.summary || 'No summary.'}\n\nReviewed commit \`${headSha}\`${task ? ` against task ${task.key}` : ''}.\n\n${marker}`,
+        body: `${review.summary || 'No summary.'}\n\nReviewed commit \`${headSha}\`${tasks.length ? ` against ${tasks.map((t) => t.key).join(', ')}` : ''}.\n\n${marker}`,
         comments: findings.map((f) => ({
           path: f.path,
           ...(f.startLine && {

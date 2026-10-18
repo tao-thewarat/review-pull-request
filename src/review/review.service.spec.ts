@@ -15,19 +15,22 @@ describe('ReviewService', () => {
     baseRef: 'main',
     headSha: 'abcdef1234567',
     generation: 2,
-    taskKey: 'IC20-9',
+    taskKeys: ['IC20-9', 'IC20-10'],
   };
   const files = [
     { path: 'a.ts', ...parsePatch('@@ -1,1 +1,3 @@\n a();\n+b();\n+c();') },
   ];
-  const task = { key: 'IC20-9', title: 'Task', description: 'Do it' };
+  const found = [
+    { key: 'IC20-9', title: 'Task', description: 'Do it' },
+    { key: 'IC20-10', title: 'Other', description: 'Also' },
+  ];
 
   const github = {
     paginate: vi.fn(),
     rest: { pulls: { listReviews: vi.fn(), createReview: vi.fn() } },
   };
   const diff = { getDiff: vi.fn() };
-  const tasks = { getTask: vi.fn() };
+  const tasks = { getTasks: vi.fn() };
   const ai = { review: vi.fn() };
   const state = { isCurrent: vi.fn(), markPublished: vi.fn() };
   const service = new ReviewService(
@@ -42,7 +45,7 @@ describe('ReviewService', () => {
     vi.clearAllMocks();
     state.isCurrent.mockResolvedValue(true);
     diff.getDiff.mockResolvedValue(files);
-    tasks.getTask.mockResolvedValue(task);
+    tasks.getTasks.mockResolvedValue(found);
     ai.review.mockResolvedValue({
       summary: 'Looks fine',
       findings: [
@@ -84,8 +87,8 @@ describe('ReviewService', () => {
       'main',
       job.headSha,
     );
-    expect(tasks.getTask).toHaveBeenCalledWith('IC20-9');
-    expect(ai.review).toHaveBeenCalledWith(files, task);
+    expect(tasks.getTasks).toHaveBeenCalledWith(['IC20-9', 'IC20-10']);
+    expect(ai.review).toHaveBeenCalledWith(files, found);
     expect(github.paginate).toHaveBeenCalledWith(
       github.rest.pulls.listReviews,
       {
@@ -100,7 +103,7 @@ describe('ReviewService', () => {
       pull_number: 7,
       commit_id: job.headSha,
       event: 'COMMENT',
-      body: `Looks fine\n\nReviewed commit \`${job.headSha}\` against task IC20-9.\n\n<!-- ai-review sha=${job.headSha} -->`,
+      body: `Looks fine\n\nReviewed commit \`${job.headSha}\` against IC20-9, IC20-10.\n\n<!-- ai-review sha=${job.headSha} -->`,
       comments: [
         {
           path: 'a.ts',
@@ -124,10 +127,10 @@ describe('ReviewService', () => {
 
   it('reviews without a task and falls back to a default summary', async () => {
     ai.review.mockResolvedValueOnce({ summary: '', findings: [] });
-    await service.run({ ...job, taskKey: null });
+    tasks.getTasks.mockResolvedValueOnce([]);
+    await service.run({ ...job, taskKeys: [] });
 
-    expect(tasks.getTask).not.toHaveBeenCalled();
-    expect(ai.review).toHaveBeenCalledWith(files, null);
+    expect(ai.review).toHaveBeenCalledWith(files, []);
     expect(github.rest.pulls.createReview).toHaveBeenCalledWith(
       expect.objectContaining({
         body: `No summary.\n\nReviewed commit \`${job.headSha}\`.\n\n<!-- ai-review sha=${job.headSha} -->`,

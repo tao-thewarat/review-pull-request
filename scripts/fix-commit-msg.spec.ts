@@ -51,4 +51,28 @@ describe('fixCommitMessage', () => {
   ])('leaves %s untouched', (input) => {
     expect(fixCommitMessage(input)).toBe(input);
   });
+
+  it.each([
+    [
+      '[IC20-9,IC20-10][FIX] addons: summary commit message',
+      'fix(addons): summary commit message\n\nRefs: IC20-9, IC20-10\n',
+    ],
+    ['[IC20-9] [ADD] cheque', 'feat: cheque\n\nRefs: IC20-9\n'],
+    ['[FIX][IC20-9, IC20-9] bug', 'fix: bug\n\nRefs: IC20-9\n'],
+    ['[IC20-9] fix(addons): bug', 'fix(addons): bug\n\nRefs: IC20-9\n'],
+    ['[IC20-9] plain words', '[IC20-9] plain words\n'],
+    ['[IC20-9][WIP] x', '[IC20-9][WIP] x\n'],
+  ])('moves task keys from %s to a footer', (input, expected) => {
+    expect(fixCommitMessage(`${input}\n`)).toBe(expected);
+  });
+
+  it('puts the footer after the body and before git comments', () => {
+    expect(
+      fixCommitMessage(
+        '[IC20-9][FIX] addons: bug\n\nWhy it broke\n\n# Please enter\n',
+      ),
+    ).toBe(
+      'fix(addons): bug\n\nWhy it broke\n\nRefs: IC20-9\n\n# Please enter\n',
+    );
+  });
 });

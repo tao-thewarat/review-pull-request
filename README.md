@@ -42,7 +42,7 @@ Each PR has at most one wanted review: the latest head commit. Every review stat
 - **Stale work.** The worker checks SHA and generation before the AI call and again before posting. A running job cannot be cancelled, so the second check discards outdated results.
 - **Pinned reviews.** Reviews are created with `commit_id` set to the analysed SHA, so a push between the check and the post cannot misplace comments.
 - **Retries.** The review body carries a `<!-- ai-review sha=... -->` marker. Before posting, the worker looks for an existing review with that marker and reuses it instead of posting twice.
-- **Task check.** The producer finds a task key such as `IC20-9` in the branch name, PR title, or PR body. The worker fetches the task from `TASK_API_URL/v1/tasks/<key>` and the model checks the diff against its description. If no key is found or the task API fails, the review runs on the diff alone.
+- **Task check.** The producer collects every task key such as `IC20-9` from the branch name, PR title, PR body, and commit messages, including lists like `[IC20-9,IC20-10]`. The worker fetches each task from `TASK_API_URL/v1/tasks/<key>` and the model checks the diff against all of them, reporting per task in the summary. Tasks that are missing or fail to load are skipped; with none, the review runs on the diff alone.
 - **Inline comments.** Patch lines are annotated with new-file line numbers for the model; findings outside the diff are dropped, since GitHub rejects them.
 
 ## Setup

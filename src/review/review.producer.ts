@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { Octokit } from 'octokit';
 import { ReviewStateService } from './review-state.service.js';
-import { findTaskKey } from '../task/task.utils.js';
+import { findTaskKeys } from '../task/task.utils.js';
 
 export interface ReviewJob {
   owner: string;
@@ -12,7 +12,7 @@ export interface ReviewJob {
   baseRef: string;
   headSha: string;
   generation: number;
-  taskKey: string | null;
+  taskKeys: string[];
 }
 
 @Injectable()
@@ -46,6 +46,12 @@ export class ReviewProducer {
       return null;
     }
 
+    // ponytail: listCommits returns at most 250 commits, enough for task keys in practice
+    const commits = await this.github.paginate(
+      this.github.rest.pulls.listCommits,
+      { owner, repo, pull_number: pullNumber },
+    );
+
     const jobId = (g: number) => `${owner}/${repo}#${pullNumber}@${g}`;
     // Drops the previous job if still waiting; an active one is left to fail its staleness check.
     await this.queue.remove(jobId(generation - 1));
@@ -58,7 +64,12 @@ export class ReviewProducer {
         baseRef: pr.base.ref,
         headSha: pr.head.sha,
         generation,
-        taskKey: findTaskKey(pr.head.ref, pr.title, pr.body),
+        taskKeys: findTaskKeys(
+          pr.head.ref,
+          pr.title,
+          pr.body,
+          ...commits.map((c) => c.commit.message),
+        ),
       },
       {
         jobId: jobId(generation),

@@ -53,4 +53,18 @@ describe('TaskService', () => {
     fetchMock.mockRejectedValueOnce(new Error('ECONNREFUSED'));
     await expect(service.getTask('IC20-9')).resolves.toBeNull();
   });
+
+  it('fetches several tasks and drops the missing ones', async () => {
+    fetchMock.mockImplementation(async (url: string) =>
+      url.endsWith('IC20-404')
+        ? new Response('', { status: 404 })
+        : new Response(JSON.stringify({ title: url.split('/').pop() })),
+    );
+    await expect(
+      service.getTasks(['IC20-9', 'IC20-404', 'IC20-10']),
+    ).resolves.toEqual([
+      { key: 'IC20-9', title: 'IC20-9', description: '' },
+      { key: 'IC20-10', title: 'IC20-10', description: '' },
+    ]);
+  });
 });

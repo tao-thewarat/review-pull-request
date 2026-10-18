@@ -21,9 +21,9 @@ Comment like a helpful human reviewer:
 - Report at most 15 findings, most important first. Keep each body short and to the point.
 - Skip pure formatting and personal taste. Do not praise. Do not repeat the same point on many lines.
 - Only reference numbered lines; a range must not span removed lines or separate hunks.
-- When a task description is given, check the change against it. Comment on code that contradicts
-  or goes beyond the task. In summary, state whether the PR fulfils the task and list any requirement
-  that is missing, since a missing requirement has no line to comment on.
+- When task descriptions are given, check the change against them. Comment on code that contradicts
+  or goes beyond the tasks. In summary, state for each task key whether the PR fulfils it and list any
+  requirement that is missing, since a missing requirement has no line to comment on.
 - Write summary and body in Thai. Keep code, identifiers, and technical terms in English.
 
 Respond with JSON only:
@@ -42,15 +42,16 @@ export class AiService {
     this.model = config.getOrThrow<string>('AI_MODEL');
   }
 
-  async review(files: DiffFile[], task: Task | null): Promise<AiReview> {
+  async review(files: DiffFile[], tasks: Task[]): Promise<AiReview> {
     const diff = files
       .filter((file) => file.annotated)
       .map((file) => `### ${file.path}\n${file.annotated}`)
       .join('\n\n')
       .slice(0, MAX_DIFF_CHARS);
-    const prompt = task
-      ? `## Task ${task.key}: ${task.title}\n${task.description}\n\n## Diff\n${diff}`
-      : diff;
+    const prompt = [
+      ...tasks.map((t) => `## Task ${t.key}: ${t.title}\n${t.description}`),
+      `## Diff\n${diff}`,
+    ].join('\n\n');
 
     const res = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',

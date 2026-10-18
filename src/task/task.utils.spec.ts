@@ -1,16 +1,18 @@
-import { findTaskKey, htmlToText } from './task.utils.js';
+import { findTaskKeys, htmlToText } from './task.utils.js';
 
 describe('task utils', () => {
-  it('finds the task key in branch, title, or body', () => {
-    expect(findTaskKey('feature/IC20-9-cheque', '[ADD] x', null)).toBe(
-      'IC20-9',
-    );
+  it('finds every task key once, in order', () => {
     expect(
-      findTaskKey('feature/fix-odoo-conf', '[FIX] IC20-12 conf', 'see ABC-1'),
-    ).toBe('IC20-12');
+      findTaskKeys(
+        'feature/IC20-9-cheque',
+        '[ADD] [IC20-9,IC20-10] cheque',
+        null,
+        'fix: IC20-11 and IC20-10\n\nrefs ABC-1',
+      ),
+    ).toEqual(['IC20-9', 'IC20-10', 'IC20-11', 'ABC-1']);
     expect(
-      findTaskKey('feature/fix-odoo-conf', '[FIX] odoo conf', null),
-    ).toBeNull();
+      findTaskKeys('feature/fix-odoo-conf', '[FIX] odoo conf', undefined),
+    ).toEqual([]);
   });
 
   it('converts task HTML to text', () => {

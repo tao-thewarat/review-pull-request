@@ -13,6 +13,12 @@ export class TaskService {
     this.apiKey = config.getOrThrow<string>('TASK_API_KEY');
   }
 
+  // Tasks that were found; missing ones are dropped.
+  async getTasks(keys: string[]): Promise<Task[]> {
+    const tasks = await Promise.all(keys.map((key) => this.getTask(key)));
+    return tasks.filter((task) => task !== null);
+  }
+
   // Task the PR implements. A missing or unreachable task must not block the review,
   // so failures return null and the review runs on the diff alone.
   // ponytail: task images ignored, send them if the model gains vision

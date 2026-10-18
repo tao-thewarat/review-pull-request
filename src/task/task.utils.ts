@@ -4,17 +4,15 @@ export interface Task {
   description: string;
 }
 
-// First task key like IC20-9 found in the branch, title, then body of the PR.
-export function findTaskKey(
+// Every task key like IC20-9 in the given texts (branch, title, body, commit messages),
+// once each, in order of appearance. Handles lists such as "[IC20-9,IC20-10]".
+export function findTaskKeys(
   ...sources: (string | null | undefined)[]
-): string | null {
-  for (const source of sources) {
-    const match = source?.match(/\b[A-Z][A-Z0-9]*-\d+\b/);
-    if (match) {
-      return match[0];
-    }
-  }
-  return null;
+): string[] {
+  const keys = sources.flatMap(
+    (source) => source?.match(/\b[A-Z][A-Z0-9]*-\d+\b/g) ?? [],
+  );
+  return [...new Set(keys)];
 }
 
 // Plain text from the task's rich-text description.

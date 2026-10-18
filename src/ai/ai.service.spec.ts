@@ -36,7 +36,7 @@ describe('AiService', () => {
       ),
     );
 
-    await expect(service.review(files, null)).resolves.toEqual({
+    await expect(service.review(files, [])).resolves.toEqual({
       summary: 'ok',
       findings: [
         {
@@ -58,18 +58,17 @@ describe('AiService', () => {
       max_tokens: 16_384,
       response_format: { type: 'json_object' },
     });
-    expect(body.messages[1].content).toBe('### a.ts\n   1 +x();');
+    expect(body.messages[1].content).toBe('## Diff\n### a.ts\n   1 +x();');
   });
 
-  it('puts the task ahead of the diff', async () => {
+  it('puts every task ahead of the diff', async () => {
     fetchMock.mockResolvedValueOnce(reply('{"summary":"ok","findings":[]}'));
-    await service.review(files, {
-      key: 'IC20-9',
-      title: 'Migrate',
-      description: 'Do it',
-    });
+    await service.review(files, [
+      { key: 'IC20-9', title: 'Migrate', description: 'Do it' },
+      { key: 'IC20-10', title: 'Test', description: 'Cover it' },
+    ]);
     expect(sentBody().messages[1].content).toBe(
-      '## Task IC20-9: Migrate\nDo it\n\n## Diff\n### a.ts\n   1 +x();',
+      '## Task IC20-9: Migrate\nDo it\n\n## Task IC20-10: Test\nCover it\n\n## Diff\n### a.ts\n   1 +x();',
     );
   });
 
@@ -77,21 +76,21 @@ describe('AiService', () => {
     fetchMock.mockResolvedValueOnce(
       new Response('overloaded', { status: 503 }),
     );
-    await expect(service.review(files, null)).rejects.toThrow(
+    await expect(service.review(files, [])).rejects.toThrow(
       'AI gateway 503: overloaded',
     );
   });
 
   it('reports finish_reason and content when the JSON is invalid', async () => {
     fetchMock.mockResolvedValueOnce(reply('{"summary": "cut', 'length'));
-    await expect(service.review(files, null)).rejects.toThrow(
+    await expect(service.review(files, [])).rejects.toThrow(
       'AI returned no valid JSON (finish_reason=length): {"summary": "cut',
     );
   });
 
   it('reports an empty answer', async () => {
     fetchMock.mockResolvedValueOnce(new Response('{}'));
-    await expect(service.review(files, null)).rejects.toThrow(
+    await expect(service.review(files, [])).rejects.toThrow(
       'AI returned no valid JSON (finish_reason=undefined): <empty>',
     );
   });
