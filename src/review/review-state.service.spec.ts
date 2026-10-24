@@ -24,6 +24,20 @@ describe('ReviewStateService', () => {
     await expect(service.bump('o/r', 7, 'sha')).resolves.toBeNull();
   });
 
+  it('clears the desired SHA when the PR closes', async () => {
+    states.query.mockResolvedValueOnce([[{ generation: 3 }], 1]);
+    await expect(service.close('o/r', 7)).resolves.toBe(3);
+    expect(states.query).toHaveBeenCalledWith(
+      expect.stringContaining("desired_sha = ''"),
+      ['o/r', 7],
+    );
+  });
+
+  it('returns null when closing a PR that was never reviewed', async () => {
+    states.query.mockResolvedValueOnce([[], 0]);
+    await expect(service.close('o/r', 7)).resolves.toBeNull();
+  });
+
   it('checks SHA and generation together', async () => {
     states.existsBy.mockResolvedValueOnce(true);
     await expect(service.isCurrent('o/r', 7, 'sha', 2)).resolves.toBe(true);

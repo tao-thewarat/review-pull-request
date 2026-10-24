@@ -37,7 +37,19 @@ export class GithubController {
       return { status: 'pong' };
     }
     const { action, repository, pull_request } = request.body;
-    if (event !== 'pull_request' || !REVIEW_ACTIONS.has(action)) {
+    if (event !== 'pull_request') {
+      return { status: 'ignored' };
+    }
+    if (action === 'closed') {
+      // Merged or closed: no review should be posted any more.
+      const removed = await this.reviewProducer.cancel(
+        repository.owner.login,
+        repository.name,
+        pull_request.number,
+      );
+      return { status: 'cancelled', removedJob: removed };
+    }
+    if (!REVIEW_ACTIONS.has(action)) {
       return { status: 'ignored' };
     }
     const job = await this.reviewProducer.enqueue(

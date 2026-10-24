@@ -7,9 +7,10 @@ import type { ReviewProducer } from '../review/review.producer.js';
 describe('GithubController', () => {
   const verifySignature = vi.fn();
   const enqueue = vi.fn();
+  const cancel = vi.fn();
   const controller = new GithubController(
     { verifySignature } as unknown as GithubService,
-    { enqueue } as unknown as ReviewProducer,
+    { enqueue, cancel } as unknown as ReviewProducer,
   );
   const request = (body: unknown) =>
     ({ rawBody: Buffer.from('raw'), body }) as RawBodyRequest<Request>;
@@ -49,7 +50,7 @@ describe('GithubController', () => {
     ).resolves.toEqual({ status: 'ignored' });
     await expect(
       controller.eventPullRequestPush(
-        pullRequest('closed'),
+        pullRequest('labeled'),
         'pull_request',
         'sig',
       ),
@@ -78,5 +79,18 @@ describe('GithubController', () => {
         'sig',
       ),
     ).resolves.toEqual({ status: 'up-to-date' });
+  });
+
+  it('cancels the review when the PR is merged or closed', async () => {
+    cancel.mockResolvedValueOnce(true);
+    await expect(
+      controller.eventPullRequestPush(
+        pullRequest('closed'),
+        'pull_request',
+        'sig',
+      ),
+    ).resolves.toEqual({ status: 'cancelled', removedJob: true });
+    expect(cancel).toHaveBeenCalledWith('owner', 'repo', 7);
+    expect(enqueue).not.toHaveBeenCalled();
   });
 });

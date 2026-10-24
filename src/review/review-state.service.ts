@@ -33,6 +33,20 @@ export class ReviewStateService {
     return rows[0]?.generation ?? null;
   }
 
+  // PR closed or merged: clear the desired SHA so every queued or running job for it
+  // fails its staleness check. Returns the last generation, or null if never reviewed.
+  async close(repository: string, prNumber: number): Promise<number | null> {
+    // TypeORM returns [rows, affectedCount] for UPDATE ... RETURNING on Postgres.
+    const [rows]: [{ generation: number }[], number] = await this.states.query(
+      `UPDATE pr_review_state
+       SET desired_sha = '', status = 'closed', updated_at = now()
+       WHERE repository = $1 AND pr_number = $2
+       RETURNING generation`,
+      [repository, prNumber],
+    );
+    return rows[0]?.generation ?? null;
+  }
+
   isCurrent(
     repository: string,
     prNumber: number,

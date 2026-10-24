@@ -24,6 +24,29 @@ export class ReviewProducer {
     private readonly state: ReviewStateService,
   ) {}
 
+  // PR closed or merged: drop its waiting job; a running one discards its result
+  // because the state no longer matches. Returns whether a job was removed.
+  async cancel(owner: string, repo: string, pullNumber: number) {
+    const generation = await this.state.close(`${owner}/${repo}`, pullNumber);
+    if (generation === null) {
+      return false;
+    }
+    return (
+      (await this.queue.remove(
+        this.jobId(owner, repo, pullNumber, generation),
+      )) === 1
+    );
+  }
+
+  private jobId(
+    owner: string,
+    repo: string,
+    pullNumber: number,
+    generation: number,
+  ) {
+    return `${owner}/${repo}#${pullNumber}@${generation}`;
+  }
+
   // Returns null when there is nothing new to review.
   async enqueue(owner: string, repo: string, pullNumber: number) {
     // Webhooks can arrive out of order, so trust GitHub's current head, not the payload.
@@ -52,7 +75,7 @@ export class ReviewProducer {
       { owner, repo, pull_number: pullNumber },
     );
 
-    const jobId = (g: number) => `${owner}/${repo}#${pullNumber}@${g}`;
+    const jobId = (g: number) => this.jobId(owner, repo, pullNumber, g);
     // Drops the previous job if still waiting; an active one is left to fail its staleness check.
     await this.queue.remove(jobId(generation - 1));
     return this.queue.add(

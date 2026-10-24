@@ -9,7 +9,7 @@ describe('ReviewProducer', () => {
     paginate: vi.fn(),
     rest: { pulls: { get: vi.fn(), listCommits: vi.fn() } },
   };
-  const state = { bump: vi.fn() };
+  const state = { bump: vi.fn(), close: vi.fn() };
   const producer = new ReviewProducer(
     queue as unknown as Queue<ReviewJob>,
     github as unknown as Octokit,
@@ -81,5 +81,25 @@ describe('ReviewProducer', () => {
       },
       expect.objectContaining({ jobId: 'owner/repo#7@3', attempts: 3 }),
     );
+  });
+
+  it('removes the queued job of a closed PR', async () => {
+    state.close.mockResolvedValueOnce(4);
+    queue.remove.mockResolvedValueOnce(1);
+    await expect(producer.cancel('owner', 'repo', 7)).resolves.toBe(true);
+    expect(state.close).toHaveBeenCalledWith('owner/repo', 7);
+    expect(queue.remove).toHaveBeenCalledWith('owner/repo#7@4');
+  });
+
+  it('reports no removal when the job is running or already done', async () => {
+    state.close.mockResolvedValueOnce(4);
+    queue.remove.mockResolvedValueOnce(0);
+    await expect(producer.cancel('owner', 'repo', 7)).resolves.toBe(false);
+  });
+
+  it('does nothing for a PR that was never reviewed', async () => {
+    state.close.mockResolvedValueOnce(null);
+    await expect(producer.cancel('owner', 'repo', 7)).resolves.toBe(false);
+    expect(queue.remove).not.toHaveBeenCalled();
   });
 });

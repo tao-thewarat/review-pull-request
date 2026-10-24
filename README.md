@@ -40,6 +40,7 @@ Each PR has at most one wanted review: the latest head commit. Every review stat
 - **Generation.** `bump()` updates `desired_sha` and increments `generation` in one SQL statement, and only when the SHA changes, so redelivered webhooks do not create new work.
 - **Out-of-order webhooks.** The producer uses the PR's current head from the GitHub API, not the SHA in the payload.
 - **Stale work.** The worker checks SHA and generation before the AI call and again before posting. A running job cannot be cancelled, so the second check discards outdated results.
+- **Closed or merged PRs.** A `closed` event clears the PR's `desired_sha`, removes its waiting job, and makes a running job discard its result, so nothing is posted after merge. Reopening the PR queues a fresh review.
 - **Pinned reviews.** Reviews are created with `commit_id` set to the analysed SHA, so a push between the check and the post cannot misplace comments.
 - **Retries.** The review body carries a `<!-- ai-review sha=... -->` marker. Before posting, the worker looks for an existing review with that marker and reuses it instead of posting twice.
 - **Task check.** The producer collects every task key such as `IC20-9` from the branch name, PR title, PR body, and commit messages, including lists like `[IC20-9,IC20-10]`. The worker fetches each task from `TASK_API_URL/v1/tasks/<key>` and the model checks the diff against all of them, reporting per task in the summary. Tasks that are missing or fail to load are skipped; with none, the review runs on the diff alone.
@@ -112,7 +113,7 @@ The service authenticates as a GitHub App, so reviews are posted as `<app-name>[
 
 One installation is supported at a time.
 
-Handled actions: `opened`, `synchronize`, `reopened`, `ready_for_review`. Other events return `ignored`, and `ping` returns `pong`.
+Handled actions: `opened`, `synchronize`, `reopened`, `ready_for_review` queue a review; `closed` cancels it. Other events return `ignored`, and `ping` returns `pong`.
 
 ### Test locally
 
