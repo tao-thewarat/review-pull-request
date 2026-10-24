@@ -106,4 +106,18 @@ describe('AiService', () => {
       'AI returned no valid JSON (finish_reason=undefined): <empty>',
     );
   });
+
+  it('completes plain text without JSON mode', async () => {
+    fetchMock.mockResolvedValueOnce(reply('feat: Add x'));
+    await expect(service.complete('sys', 'user')).resolves.toEqual({
+      content: 'feat: Add x',
+      finishReason: 'stop',
+    });
+    const body = sentBody();
+    expect(body.response_format).toBeUndefined();
+    expect(body.messages).toEqual([
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'user' },
+    ]);
+  });
 });

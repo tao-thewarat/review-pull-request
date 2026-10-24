@@ -7,6 +7,7 @@ import { ExpressAdapter } from '@bull-board/express';
 import { basicAuth } from './common/middleware/basic-auth.js';
 import { GithubModule } from './github/github.module.js';
 import { ReviewModule } from './review/review.module.js';
+import { CommitMessageModule } from './commit-message/commit-message.module.js';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { ReviewModule } from './review/review.module.js';
     }),
     GithubModule,
     ReviewModule,
+    CommitMessageModule,
   ],
   controllers: [],
   providers: [],

@@ -75,6 +75,27 @@ export class AiService {
       `## Diff\n${diff}`,
     ].join('\n\n');
 
+    const { content, finishReason } = await this.complete(
+      SYSTEM_PROMPT,
+      prompt,
+      { json: true },
+    );
+    try {
+      return parseAiReview(content);
+    } catch {
+      // Thrown so BullMQ retries; the snippet shows what the model actually returned.
+      throw new Error(
+        `AI returned no valid JSON (finish_reason=${finishReason}): ${content.slice(0, 500) || '<empty>'}`,
+      );
+    }
+  }
+
+  // One chat completion. Throws on gateway errors so BullMQ jobs retry.
+  async complete(
+    system: string,
+    user: string,
+    { json = false }: { json?: boolean } = {},
+  ): Promise<{ content: string; finishReason: string | undefined }> {
     const res = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -85,10 +106,10 @@ export class AiService {
         model: this.model,
         temperature: 0,
         max_tokens: MAX_OUTPUT_TOKENS,
-        response_format: { type: 'json_object' },
+        ...(json && { response_format: { type: 'json_object' } }),
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: prompt },
+          { role: 'system', content: system },
+          { role: 'user', content: user },
         ],
       }),
       signal: AbortSignal.timeout(300_000),
@@ -98,14 +119,9 @@ export class AiService {
     }
     const data = await res.json();
     const choice = data.choices?.[0];
-    const content: string = choice?.message?.content ?? '';
-    try {
-      return parseAiReview(content);
-    } catch {
-      // Thrown so BullMQ retries; the snippet shows what the model actually returned.
-      throw new Error(
-        `AI returned no valid JSON (finish_reason=${choice?.finish_reason}): ${content.slice(0, 500) || '<empty>'}`,
-      );
-    }
+    return {
+      content: choice?.message?.content ?? '',
+      finishReason: choice?.finish_reason,
+    };
   }
 }

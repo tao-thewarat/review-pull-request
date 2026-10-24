@@ -32,6 +32,7 @@ Each PR has at most one wanted review: the latest head commit. Every review stat
 | `DiffModule` | `src/diff/` | PR diff at a SHA via the compare API, line-number annotation |
 | `TaskModule` | `src/task/` | Task key lookup and task description from the task API |
 | `AiModule` | `src/ai/` | LLM call, parse findings |
+| `CommitMessageModule` | `src/commit-message/` | `POST /commit-message`: AI commit message from a diff |
 | `OctokitModule` | `src/octokit/` | Shared GitHub App client |
 | `common` | `src/common/` | Basic auth middleware for the queue dashboard |
 
@@ -78,6 +79,8 @@ AI_API_KEY=<api key>
 TASK_API_URL=http://localhost:8069
 TASK_API_KEY=<task api key>
 
+COMMIT_MESSAGE_API_KEY=<random token>
+
 BULL_BOARD_USER=admin
 BULL_BOARD_PASSWORD=<password>
 ```
@@ -99,6 +102,18 @@ docker run -p 3000:3000 --env-file .env review-pull-request
 ```
 
 The image is a multi-stage build: compile with dev dependencies, then copy `dist/` and production `node_modules` into a clean `node:26-alpine` image that runs as the `node` user. Point `REDIS_HOST` and `DATABASE_URL` at hosts reachable from the container (not `localhost`).
+
+## Commit message API
+
+`POST /commit-message` turns a staged diff into a one-line message in the form `<addon>: <summary>`, for example `sale_discount: handle empty discount`. It needs `Authorization: Bearer $COMMIT_MESSAGE_API_KEY`. Diffs over 100,000 characters are truncated.
+
+```bash
+git diff --cached | jq -Rs '{diff: .}' | curl -s -X POST https://<host>/commit-message \
+  -H "Authorization: Bearer $COMMIT_MESSAGE_API_KEY" \
+  -H 'Content-Type: application/json' --data-binary @- | jq -r .message
+```
+
+Responses: `200 {"message": "..."}`, `400` when `diff` is missing or empty, `401` without a valid token.
 
 ## Queue dashboard
 
