@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { PrReviewState } from './pr-review-state.entity.js';
+import { PrReviewState } from './entities/pr-review-state.entity.js';
 
 @Injectable()
 export class ReviewStateService {

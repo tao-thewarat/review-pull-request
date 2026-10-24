@@ -1,10 +1,12 @@
 import type { Octokit } from 'octokit';
 import type { AiService } from '../ai/ai.service.js';
 import type { DiffService } from '../diff/diff.service.js';
-import { parsePatch } from '../diff/diff.utils.js';
+import { parsePatch } from '../diff/utils/diff.utils.js';
 import type { TaskService } from '../task/task.service.js';
 import type { ReviewStateService } from './review-state.service.js';
-import type { ReviewJob } from './review.producer.js';
+import type { ReviewHistoryService } from './review-history.service.js';
+import { codeFingerprint } from './utils/review.utils.js';
+import type { ReviewJob } from './queues/review.producer.js';
 import { ReviewService } from './review.service.js';
 
 describe('ReviewService', () => {
@@ -33,17 +35,20 @@ describe('ReviewService', () => {
   const tasks = { getTasks: vi.fn() };
   const ai = { review: vi.fn() };
   const state = { isCurrent: vi.fn(), markPublished: vi.fn() };
+  const history = { list: vi.fn(), record: vi.fn() };
   const service = new ReviewService(
     github as unknown as Octokit,
     diff as unknown as DiffService,
     tasks as unknown as TaskService,
     ai as unknown as AiService,
     state as unknown as ReviewStateService,
+    history as unknown as ReviewHistoryService,
   );
 
   beforeEach(() => {
     vi.clearAllMocks();
     state.isCurrent.mockResolvedValue(true);
+    history.list.mockResolvedValue([]);
     diff.getDiff.mockResolvedValue(files);
     tasks.getTasks.mockResolvedValue(found);
     ai.review.mockResolvedValue({
@@ -88,7 +93,8 @@ describe('ReviewService', () => {
       job.headSha,
     );
     expect(tasks.getTasks).toHaveBeenCalledWith(['IC20-9', 'IC20-10']);
-    expect(ai.review).toHaveBeenCalledWith(files, found);
+    expect(history.list).toHaveBeenCalledWith('owner/repo', 7);
+    expect(ai.review).toHaveBeenCalledWith(files, found, []);
     expect(github.paginate).toHaveBeenCalledWith(
       github.rest.pulls.listReviews,
       {
@@ -123,6 +129,10 @@ describe('ReviewService', () => {
       job.headSha,
       55,
     );
+    expect(history.record).toHaveBeenCalledWith('owner/repo', 7, job.headSha, [
+      expect.objectContaining({ line: 3, startLine: 2 }),
+      expect.objectContaining({ line: 2, startLine: undefined }),
+    ]);
   });
 
   it('reviews without a task and falls back to a default summary', async () => {
@@ -130,7 +140,7 @@ describe('ReviewService', () => {
     tasks.getTasks.mockResolvedValueOnce([]);
     await service.run({ ...job, taskKeys: [] });
 
-    expect(ai.review).toHaveBeenCalledWith(files, []);
+    expect(ai.review).toHaveBeenCalledWith(files, [], []);
     expect(github.rest.pulls.createReview).toHaveBeenCalledWith(
       expect.objectContaining({
         body: `No summary.\n\nReviewed commit \`${job.headSha}\`.\n\n<!-- ai-review sha=${job.headSha} -->`,
@@ -154,5 +164,33 @@ describe('ReviewService', () => {
       job.headSha,
       42,
     );
+  });
+
+  it('does not repeat a comment on code unchanged since an earlier push', async () => {
+    const previous = [
+      {
+        path: 'a.ts',
+        line: 3,
+        body: 'block',
+        fingerprint: codeFingerprint('a.ts', files[0].lines, 2, 3),
+      },
+    ];
+    history.list.mockResolvedValueOnce(previous);
+    await service.run(job);
+
+    expect(ai.review).toHaveBeenCalledWith(files, found, previous);
+    expect(github.rest.pulls.createReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        comments: [{ path: 'a.ts', line: 2, side: 'RIGHT', body: 'single' }],
+      }),
+    );
+  });
+
+  it('does not record history again when reusing an earlier review', async () => {
+    github.paginate.mockResolvedValueOnce([
+      { id: 42, body: `<!-- ai-review sha=${job.headSha} -->` },
+    ]);
+    await service.run(job);
+    expect(history.record).not.toHaveBeenCalled();
   });
 });

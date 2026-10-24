@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { type Task, htmlToText } from './task.utils.js';
+import { type Task, htmlToText } from './utils/task.utils.js';
 
 @Injectable()
 export class TaskService {

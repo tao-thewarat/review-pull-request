@@ -1,7 +1,7 @@
 import type { Job } from 'bullmq';
 import { ReviewProcessor } from './review.consumer.js';
 import type { ReviewJob } from './review.producer.js';
-import type { ReviewService } from './review.service.js';
+import type { ReviewService } from '../review.service.js';
 
 describe('ReviewProcessor', () => {
   it('runs the review for the job data', async () => {

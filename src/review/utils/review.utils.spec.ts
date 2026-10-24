@@ -1,5 +1,9 @@
-import { parsePatch } from '../diff/diff.utils.js';
-import { commentBody, validateFindings } from './review.utils.js';
+import { parsePatch } from '../../diff/utils/diff.utils.js';
+import {
+  codeFingerprint,
+  commentBody,
+  validateFindings,
+} from './review.utils.js';
 
 describe('review utils', () => {
   const patch = [
@@ -52,7 +56,7 @@ describe('review utils', () => {
       ],
       files,
     );
-    expect(result).toEqual([
+    expect(result.map(({ fingerprint, ...f }) => f)).toEqual([
       { path: 'a.ts', startLine: 2, line: 4, body: 'range', suggestion: 'x' },
       {
         path: 'a.ts',
@@ -78,5 +82,67 @@ describe('review utils', () => {
     expect(
       commentBody({ path: 'a', line: 1, body: 'w', suggestion: '```md```' }),
     ).toBe('w\n\n````suggestion\n```md```\n````');
+  });
+
+  it('fingerprints the commented code, ignoring line numbers and trailing spaces', () => {
+    const before = new Map([
+      [10, 'def _compute(self):'],
+      [11, '    return 1'],
+    ]);
+    const after = new Map([
+      [30, 'def _compute(self):  '],
+      [31, '    return 1'],
+    ]);
+    expect(codeFingerprint('a.py', before, 10, 11)).toBe(
+      codeFingerprint('a.py', after, 30, 31),
+    );
+    expect(codeFingerprint('a.py', before, 10, 11)).not.toBe(
+      codeFingerprint('b.py', before, 10, 11),
+    );
+    expect(codeFingerprint('a.py', before, 10, 11)).not.toBe(
+      codeFingerprint(
+        'a.py',
+        new Map([...before, [11, '    return 2']]),
+        10,
+        11,
+      ),
+    );
+  });
+
+  it('treats lines outside the map as empty', () => {
+    expect(codeFingerprint('a.py', new Map([[1, 'x']]), 1, 2)).toBe(
+      codeFingerprint(
+        'a.py',
+        new Map([
+          [1, 'x'],
+          [2, ''],
+        ]),
+        1,
+        2,
+      ),
+    );
+  });
+
+  it('drops findings on code that was already commented', () => {
+    const files = [{ path: 'a.ts', ...parsePatch(patch) }];
+    const known = new Set([codeFingerprint('a.ts', files[0].lines, 2, 3)]);
+    const result = validateFindings(
+      [
+        { path: 'a.ts', startLine: 2, line: 3, body: 'same issue again' },
+        { path: 'a.ts', line: 4, body: 'new issue' },
+      ],
+      files,
+      known,
+    );
+    expect(result).toEqual([
+      {
+        path: 'a.ts',
+        line: 4,
+        body: 'new issue',
+        startLine: undefined,
+        suggestion: undefined,
+        fingerprint: codeFingerprint('a.ts', files[0].lines, 4, 4),
+      },
+    ]);
   });
 });

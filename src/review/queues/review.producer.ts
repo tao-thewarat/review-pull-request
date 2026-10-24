@@ -2,8 +2,8 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { Octokit } from 'octokit';
-import { ReviewStateService } from './review-state.service.js';
-import { findTaskKeys } from '../task/task.utils.js';
+import { ReviewStateService } from '../review-state.service.js';
+import { findTaskKeys } from '../../task/utils/task.utils.js';
 
 export interface ReviewJob {
   owner: string;

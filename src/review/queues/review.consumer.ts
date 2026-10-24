@@ -1,5 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { ReviewService } from './review.service.js';
+import { ReviewService } from '../review.service.js';
 import { Job } from 'bullmq';
 import type { ReviewJob } from './review.producer.js';
 

@@ -1,5 +1,5 @@
 import type { Repository } from 'typeorm';
-import type { PrReviewState } from './pr-review-state.entity.js';
+import type { PrReviewState } from './entities/pr-review-state.entity.js';
 import { ReviewStateService } from './review-state.service.js';
 
 describe('ReviewStateService', () => {

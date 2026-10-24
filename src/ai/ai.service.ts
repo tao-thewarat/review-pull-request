@@ -1,13 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { DiffFile } from '../diff/diff.utils.js';
-import type { Task } from '../task/task.utils.js';
-import { type AiReview, parseAiReview } from './ai.utils.js';
+import type { DiffFile } from '../diff/utils/diff.utils.js';
+import type { Task } from '../task/utils/task.utils.js';
+import { type AiReview, parseAiReview } from './utils/ai.utils.js';
 
 // ponytail: diff truncated to fit the context window, chunk per file if large PRs matter
 const MAX_DIFF_CHARS = 100_000;
 // Gateway default is 4096 output tokens, and reasoning tokens count against it.
 const MAX_OUTPUT_TOKENS = 16_384;
+// Most recent earlier comments shown to the model, each cut to 300 characters.
+const MAX_PREVIOUS = 50;
+
+export interface PreviousComment {
+  path: string;
+  line: number;
+  body: string;
+}
 
 const SYSTEM_PROMPT = `You are a senior engineer reviewing a teammate's pull request.
 Each added or unchanged line of the diff starts with its line number in the new file; removed lines have no number.
@@ -24,6 +32,8 @@ Comment like a helpful human reviewer:
 - When task descriptions are given, check the change against them. Comment on code that contradicts
   or goes beyond the tasks. In summary, state for each task key whether the PR fulfils it and list any
   requirement that is missing, since a missing requirement has no line to comment on.
+- Comments listed under "Already commented" were posted on earlier pushes. Do not repeat them
+  or rephrase them on the same code; only report new problems.
 - Write summary and body in Thai. Keep code, identifiers, and technical terms in English.
 
 Respond with JSON only:
@@ -42,7 +52,11 @@ export class AiService {
     this.model = config.getOrThrow<string>('AI_MODEL');
   }
 
-  async review(files: DiffFile[], tasks: Task[]): Promise<AiReview> {
+  async review(
+    files: DiffFile[],
+    tasks: Task[],
+    previous: PreviousComment[] = [],
+  ): Promise<AiReview> {
     const diff = files
       .filter((file) => file.annotated)
       .map((file) => `### ${file.path}\n${file.annotated}`)
@@ -50,6 +64,14 @@ export class AiService {
       .slice(0, MAX_DIFF_CHARS);
     const prompt = [
       ...tasks.map((t) => `## Task ${t.key}: ${t.title}\n${t.description}`),
+      ...(previous.length
+        ? [
+            `## Already commented\n${previous
+              .slice(-MAX_PREVIOUS)
+              .map((c) => `- ${c.path}:${c.line}: ${c.body.slice(0, 300)}`)
+              .join('\n')}`,
+          ]
+        : []),
       `## Diff\n${diff}`,
     ].join('\n\n');
 

@@ -4,8 +4,9 @@ import { AiService } from '../ai/ai.service.js';
 import { DiffService } from '../diff/diff.service.js';
 import { TaskService } from '../task/task.service.js';
 import { ReviewStateService } from './review-state.service.js';
-import type { ReviewJob } from './review.producer.js';
-import { commentBody, validateFindings } from './review.utils.js';
+import { ReviewHistoryService } from './review-history.service.js';
+import type { ReviewJob } from './queues/review.producer.js';
+import { commentBody, validateFindings } from './utils/review.utils.js';
 
 @Injectable()
 export class ReviewService {
@@ -17,6 +18,7 @@ export class ReviewService {
     private readonly tasks: TaskService,
     private readonly ai: AiService,
     private readonly state: ReviewStateService,
+    private readonly history: ReviewHistoryService,
   ) {}
 
   async run(job: ReviewJob): Promise<void> {
@@ -34,8 +36,15 @@ export class ReviewService {
 
     const files = await this.diff.getDiff(owner, repo, baseRef, headSha);
     const tasks = await this.tasks.getTasks(taskKeys);
-    const review = await this.ai.review(files, tasks);
-    const findings = validateFindings(review.findings, files);
+    // Comments from earlier pushes: shown to the model, and filtered out again if repeated
+    // on code that has not changed since.
+    const previous = await this.history.list(repository, pullNumber);
+    const review = await this.ai.review(files, tasks, previous);
+    const findings = validateFindings(
+      review.findings,
+      files,
+      new Set(previous.map((c) => c.fingerprint)),
+    );
 
     // The AI call is slow; a newer push may have landed meanwhile.
     if (!(await isCurrent())) {
@@ -72,6 +81,7 @@ export class ReviewService {
         })),
       });
       reviewId = data.id;
+      await this.history.record(repository, pullNumber, headSha, findings);
     }
 
     await this.state.markPublished(

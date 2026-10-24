@@ -28,18 +28,22 @@ Each PR has at most one wanted review: the latest head commit. Every review stat
 | Module | Folder | Role |
 | --- | --- | --- |
 | `GithubModule` | `src/github/` | Webhook controller, signature check, `pull_request` action filter |
-| `ReviewModule` | `src/review/` | Producer (head SHA check, state bump, enqueue), worker, staleness checks, publish, per-PR state in Postgres |
+| `ReviewModule` | `src/review/` | Producer, worker and daily cleanup (`queues/`), review flow, state and comment history (services, `entities/`) |
 | `DiffModule` | `src/diff/` | PR diff at a SHA via the compare API, line-number annotation |
 | `TaskModule` | `src/task/` | Task key lookup and task description from the task API |
 | `AiModule` | `src/ai/` | LLM call, parse findings |
-| `OctokitModule` | `src/octokit/` | Shared authenticated GitHub client |
-| `common` | `src/common/` | Basic auth for the queue dashboard |
+| `OctokitModule` | `src/octokit/` | Shared GitHub App client |
+| `common` | `src/common/` | Basic auth middleware for the queue dashboard |
+
+Each module keeps its `*.module.ts`, `*.service.ts` and `*.controller.ts` at the module root, and other files in folders by kind: `entities/`, `queues/`, `utils/`, `middleware/`. Specs sit next to the code they test.
 
 ### Design notes
 
 - **Generation.** `bump()` updates `desired_sha` and increments `generation` in one SQL statement, and only when the SHA changes, so redelivered webhooks do not create new work.
 - **Out-of-order webhooks.** The producer uses the PR's current head from the GitHub API, not the SHA in the payload.
 - **Stale work.** The worker checks SHA and generation before the AI call and again before posting. A running job cannot be cancelled, so the second check discards outdated results.
+- **No repeated comments.** Every posted inline comment is stored in `pr_review_comment` with a fingerprint of the path and the commented code. On the next push, earlier comments are shown to the model, and any finding on code with a known fingerprint is dropped, so unchanged code (for example lines 10-15 of `_compute_something`) is not commented on again. Changing that code changes the fingerprint and allows a new comment.
+- **History cleanup.** A daily BullMQ job scheduler (03:00 server time, queue `review-cleanup`) deletes the comment history and state of PRs closed more than 7 days ago.
 - **Closed or merged PRs.** A `closed` event clears the PR's `desired_sha`, removes its waiting job, and makes a running job discard its result, so nothing is posted after merge. Reopening the PR queues a fresh review.
 - **Pinned reviews.** Reviews are created with `commit_id` set to the analysed SHA, so a push between the check and the post cannot misplace comments.
 - **Retries.** The review body carries a `<!-- ai-review sha=... -->` marker. Before posting, the worker looks for an existing review with that marker and reuses it instead of posting twice.

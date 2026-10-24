@@ -2,7 +2,7 @@ import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 import { GithubController } from './github.controller.js';
 import type { GithubService } from './github.service.js';
-import type { ReviewProducer } from '../review/review.producer.js';
+import type { ReviewProducer } from '../review/queues/review.producer.js';
 
 describe('GithubController', () => {
   const verifySignature = vi.fn();

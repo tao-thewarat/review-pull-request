@@ -2,15 +2,15 @@ export interface DiffFile {
   path: string;
   // Annotated patch shown to the AI, null when GitHub omits the patch (binary/too large).
   annotated: string | null;
-  // New-file line numbers that GitHub accepts for inline comments (side RIGHT).
-  lines: Set<number>;
+  // New-file line number -> code, for every line GitHub accepts an inline comment on (side RIGHT).
+  lines: Map<number, string>;
 }
 
 // Prefix each added/context line with its new-file line number so the AI can cite it.
 export function parsePatch(
   patch: string,
 ): Pick<DiffFile, 'annotated' | 'lines'> {
-  const lines = new Set<number>();
+  const lines = new Map<number, string>();
   const annotated: string[] = [];
   let line = 0;
   for (const raw of patch.split('\n')) {
@@ -21,7 +21,7 @@ export function parsePatch(
     } else if (raw.startsWith('-')) {
       annotated.push(`     ${raw}`);
     } else if (raw !== '' && !raw.startsWith('\\')) {
-      lines.add(line);
+      lines.set(line, raw.slice(1));
       annotated.push(`${String(line).padStart(4)} ${raw}`);
       line++;
     }

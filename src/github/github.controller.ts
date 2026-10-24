@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { GithubService } from './github.service.js';
-import { ReviewProducer } from '../review/review.producer.js';
+import { ReviewProducer } from '../review/queues/review.producer.js';
 
 const REVIEW_ACTIONS = new Set([
   'opened',

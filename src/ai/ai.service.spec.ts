@@ -12,8 +12,8 @@ describe('AiService', () => {
   } as unknown as ConfigService);
   const fetchMock = vi.fn();
   const files = [
-    { path: 'a.ts', annotated: '   1 +x();', lines: new Set([1]) },
-    { path: 'logo.png', annotated: null, lines: new Set<number>() },
+    { path: 'a.ts', annotated: '   1 +x();', lines: new Map([[1, 'x();']]) },
+    { path: 'logo.png', annotated: null, lines: new Map<number, string>() },
   ];
   const reply = (content: unknown, finish = 'stop') =>
     new Response(
@@ -69,6 +69,18 @@ describe('AiService', () => {
     ]);
     expect(sentBody().messages[1].content).toBe(
       '## Task IC20-9: Migrate\nDo it\n\n## Task IC20-10: Test\nCover it\n\n## Diff\n### a.ts\n   1 +x();',
+    );
+  });
+
+  it('lists earlier comments so the model does not repeat them', async () => {
+    fetchMock.mockResolvedValueOnce(reply('{"summary":"ok","findings":[]}'));
+    await service.review(
+      files,
+      [],
+      [{ path: 'a.ts', line: 1, body: 'x'.repeat(400) }],
+    );
+    expect(sentBody().messages[1].content).toBe(
+      `## Already commented\n- a.ts:1: ${'x'.repeat(300)}\n\n## Diff\n### a.ts\n   1 +x();`,
     );
   });
 

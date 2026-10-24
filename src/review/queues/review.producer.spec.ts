@@ -1,6 +1,6 @@
 import type { Queue } from 'bullmq';
 import type { Octokit } from 'octokit';
-import type { ReviewStateService } from './review-state.service.js';
+import type { ReviewStateService } from '../review-state.service.js';
 import { type ReviewJob, ReviewProducer } from './review.producer.js';
 
 describe('ReviewProducer', () => {

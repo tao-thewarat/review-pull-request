@@ -4,7 +4,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { ExpressAdapter } from '@bull-board/express';
-import { basicAuth } from './common/basic-auth.js';
+import { basicAuth } from './common/middleware/basic-auth.js';
 import { GithubModule } from './github/github.module.js';
 import { ReviewModule } from './review/review.module.js';
 

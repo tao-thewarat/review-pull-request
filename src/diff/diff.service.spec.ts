@@ -28,9 +28,9 @@ describe('DiffService', () => {
       {
         path: 'a.ts',
         annotated: '@@ -1,1 +1,1 @@\n   1 +x();',
-        lines: new Set([1]),
+        lines: new Map([[1, 'x();']]),
       },
-      { path: 'logo.png', annotated: null, lines: new Set() },
+      { path: 'logo.png', annotated: null, lines: new Map() },
     ]);
   });
 

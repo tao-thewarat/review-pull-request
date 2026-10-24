@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Octokit } from 'octokit';
-import { type DiffFile, parsePatch } from './diff.utils.js';
+import { type DiffFile, parsePatch } from './utils/diff.utils.js';
 
 @Injectable()
 export class DiffService {
@@ -23,7 +23,7 @@ export class DiffService {
       path: file.filename,
       ...(file.patch
         ? parsePatch(file.patch)
-        : { annotated: null, lines: new Set<number>() }),
+        : { annotated: null, lines: new Map<number, string>() }),
     }));
   }
 }

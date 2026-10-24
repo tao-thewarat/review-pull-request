@@ -16,7 +16,9 @@ describe('diff utils', () => {
 
   it('maps diff lines to new-file line numbers', () => {
     const { lines, annotated } = parsePatch(patch);
-    expect([...lines]).toEqual([1, 2, 3, 4, 21, 22]);
+    expect([...lines.keys()]).toEqual([1, 2, 3, 4, 21, 22]);
+    expect(lines.get(3)).toBe('const c = 4;');
+    expect(lines.get(1)).toBe('const a = 1;');
     expect(annotated).toContain('   3 +const c = 4;');
     expect(annotated).toContain('     -const b = 2;');
   });
